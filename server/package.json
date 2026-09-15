@@ -1,0 +1,33 @@
+{
+  "name": "@karthika/server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "REST API for Karthika Stores",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "node --watch --env-file-if-exists=.env src/index.js",
+    "start": "node src/index.js",
+    "db:migrate": "node --env-file-if-exists=.env db/migrate.js",
+    "db:seed": "node --env-file-if-exists=.env db/seed.js",
+    "db:reset": "node --env-file-if-exists=.env db/migrate.js --fresh && node --env-file-if-exists=.env db/seed.js",
+    "test": "node --env-file-if-exists=.env --env-file=test/.env.test --test test/*.test.js",
+    "start:local": "node --env-file-if-exists=.env src/index.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "pg": "^8.13.1",
+    "qrcode": "^1.5.4",
+    "zod": "^3.24.1"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5"
+    />
+    <meta name="theme-color" content="#1f8a4c" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0d1512" media="(prefers-color-scheme: dark)" />
+    <meta name="description" content="Karthika Stores — order groceries and provisions online. Free delivery within 5 km of Thrissur Round, or pick up in store." />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <!-- translucent lets the shop-green header run under the status bar on
+         iOS, which is the difference between "installed app" and "website in
+         a chromeless window". -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Karthika Stores" />
+    <meta name="format-detection" content="telephone=no" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <title>Karthika Stores — provisions delivered free within 5 km</title>
+    <style>
+      /* Painted before any JavaScript runs, so a cold start shows the shop's
+         own background rather than a white flash. */
+      html { background: #f6f7f6; }
+      @media (prefers-color-scheme: dark) { html { background: #0d1512; } }
+      body { margin: 0; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

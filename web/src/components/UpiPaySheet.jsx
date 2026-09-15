@@ -1,0 +1,209 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { openUpiIntent, claimUpiPayment } from '../lib/payments.js';
+import { money } from '../lib/format.js';
+import { toast } from '../store/ui.js';
+import { Sheet } from './Sheet.jsx';
+import { IconCheck, IconClock, IconCopy, IconRefresh, IconShield } from './Icons.jsx';
+
+/**
+ * Pay by UPI QR.
+ *
+ * Two different situations share this screen, because on a phone they are the
+ * same moment: scan-with-another-device, and tap-through-to-your-own-UPI-app.
+ * A customer on a laptop scans with their phone; a customer on the phone taps
+ * "Open UPI app" and comes back. Either way the last step is theirs to report
+ * — the shop confirms the money separately, so this never claims an order is
+ * paid on its own.
+ */
+
+const countdown = (until) => {
+  if (!until) return null;
+  const left = Math.max(0, new Date(until).getTime() - Date.now());
+  const minutes = Math.floor(left / 60_000);
+  const seconds = Math.floor((left % 60_000) / 1000);
+  return { left, text: `${minutes}:${String(seconds).padStart(2, '0')}` };
+};
+
+export const UpiPaySheet = ({ open, order, onClose, onClaimed }) => {
+  const [intent, setIntent] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [reference, setReference] = useState('');
+  const [claiming, setClaiming] = useState(false);
+  const [tick, setTick] = useState(0);
+  const [copied, setCopied] = useState(false);
+  const referenceField = useRef(null);
+
+  const awaitingShop = order?.paymentStatus === 'submitted';
+
+  const load = useCallback(async () => {
+    if (!order?.id) return;
+    setLoading(true);
+    setError(null);
+    try {
+      setIntent(await openUpiIntent(order.id));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [order?.id]);
+
+  useEffect(() => {
+    if (!open || awaitingShop) return;
+    load();
+  }, [open, awaitingShop, load]);
+
+  // Drives the expiry countdown. One second is cheap and only while open.
+  useEffect(() => {
+    if (!open || !intent?.expiresAt) return undefined;
+    const timer = setInterval(() => setTick((value) => value + 1), 1000);
+    return () => clearInterval(timer);
+  }, [open, intent?.expiresAt]);
+
+  const remaining = countdown(intent?.expiresAt);
+  const expired = remaining !== null && remaining.left === 0;
+
+  const copyVpa = async () => {
+    try {
+      await navigator.clipboard.writeText(intent.payeeVpa);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.info(`Pay to ${intent.payeeVpa}`);
+    }
+  };
+
+  const claim = async () => {
+    setClaiming(true);
+    try {
+      const updated = await claimUpiPayment({ orderId: order.id, reference: reference.trim() });
+      toast.success('Thanks — the shop is checking it now');
+      onClaimed?.(updated);
+    } catch (err) {
+      toast.error(err.message);
+      referenceField.current?.focus();
+    } finally {
+      setClaiming(false);
+    }
+  };
+
+  return (
+    <Sheet open={open} title={awaitingShop ? 'Payment sent' : 'Pay by UPI'} onClose={onClose}>
+      {awaitingShop ? (
+        <div className="stack" style={{ gap: 14 }}>
+          <div className="upi-done">
+            <div className="upi-done__mark" aria-hidden="true">
+              <IconCheck size={26} />
+            </div>
+            <h3>The shop is confirming your payment</h3>
+            <p className="small muted">
+              {order?.contactName?.split(' ')[0] ?? 'We'} — we have your reference. Somebody at the
+              counter matches it against the shop&apos;s bank alert, usually within a few minutes,
+              and your order moves to being packed straight after.
+            </p>
+          </div>
+          <button type="button" className="btn btn--primary btn--block" onClick={onClose}>
+            Track my order
+          </button>
+        </div>
+      ) : loading && !intent ? (
+        <div className="stack" style={{ gap: 12 }}>
+          <div className="skeleton" style={{ height: 232, borderRadius: 18 }} />
+          <div className="skeleton" style={{ height: 44 }} />
+        </div>
+      ) : error ? (
+        <div className="stack" style={{ gap: 12 }}>
+          <div className="banner banner--bad">{error}</div>
+          <button type="button" className="btn btn--outline btn--block" onClick={load}>
+            Try again
+          </button>
+        </div>
+      ) : intent ? (
+        <div className="stack" style={{ gap: 14 }}>
+          <div className="upi-amount">
+            <span className="tiny muted">Amount to pay</span>
+            <strong>{money(intent.amountPaise)}</strong>
+            <span className="tiny faint">Order {intent.orderNumber}</span>
+          </div>
+
+          <div className={`upi-qr ${expired ? 'is-expired' : ''}`}>
+            {/* The SVG is generated by our own API from our own order data —
+                no third-party markup reaches this. */}
+            <div className="upi-qr__code" dangerouslySetInnerHTML={{ __html: intent.qrSvg }} />
+            {expired && (
+              <div className="upi-qr__veil">
+                <span className="small">This code has expired</span>
+                <button type="button" className="btn btn--sm btn--primary" onClick={load}>
+                  <IconRefresh size={14} /> Show a fresh code
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="row row--between">
+            <button type="button" className="chip chip--copy" onClick={copyVpa}>
+              {copied ? <IconCheck size={13} /> : <IconCopy size={13} />}
+              {copied ? 'UPI ID copied' : intent.payeeVpa}
+            </button>
+            {remaining && !expired && (
+              <span className="tiny muted row" style={{ gap: 5 }}>
+                <IconClock size={13} /> valid {remaining.text}
+              </span>
+            )}
+          </div>
+
+          <a
+            className="btn btn--primary btn--block upi-open"
+            href={intent.upiUri}
+            // On a phone this hands off to GPay / PhonePe / Paytm. On a
+            // desktop nothing is registered for upi:, so the QR above stays
+            // the real path and this is a harmless extra.
+            onClick={() => setReference('')}
+          >
+            Open my UPI app
+          </a>
+          <p className="tiny faint center" style={{ marginTop: -6 }}>
+            On a computer? Scan the code with your phone instead.
+          </p>
+
+          <div className="divider" />
+
+          <div className="field" style={{ marginBottom: 0 }}>
+            <label htmlFor="upi-ref">Paid? Enter the UPI reference (UTR)</label>
+            <input
+              id="upi-ref"
+              ref={referenceField}
+              value={reference}
+              inputMode="numeric"
+              autoComplete="off"
+              maxLength={22}
+              placeholder="e.g. 412345678901"
+              onChange={(event) => setReference(event.target.value.replace(/\s/g, ''))}
+            />
+            <span className="field__hint">
+              Your UPI app shows it on the success screen as UTR, RRN or transaction ID.
+            </span>
+          </div>
+
+          <button
+            type="button"
+            className="btn btn--accent btn--block"
+            disabled={claiming || reference.trim().length < 6}
+            onClick={claim}
+          >
+            {claiming ? 'Sending…' : "I've paid — tell the shop"}
+          </button>
+
+          <div className="row" style={{ gap: 8, alignItems: 'flex-start' }}>
+            <IconShield size={15} />
+            <span className="tiny muted">
+              The money goes straight from your bank to the shop&apos;s account. Nothing about your
+              UPI app or your bank passes through this site.
+            </span>
+          </div>
+        </div>
+      ) : null}
+    </Sheet>
+  );
+};
